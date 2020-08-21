@@ -1,0 +1,40 @@
+name: CI/CD
+
+on: [push, pull_request]
+
+jobs:
+  Test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ctison/actions/conftest@master
+      - working-directory: kubernetes/
+        run: make test
+
+  Release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: Test
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ctison/actions/opa@master
+      - name: Build OPA bundle kubernetes.tar.gz
+        working-directory: kubernetes/
+        run: make bundle
+      - id: version
+        run: echo "::set-output name=version::${GITHUB_REF##refs/tags/}"
+      - uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        with:
+          tag_name: ${{steps.version.outputs.version}}
+          release_name: ${{steps.version.outputs.version}}
+      - uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        with:
+          upload_url: ${{steps.create_release.outputs.upload_url}}
+          asset_path: kubernetes/kubernetes.tar.gz
+          asset_name: kubernetes.tar.gz
+          asset_content_type: application/gzip
